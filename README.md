@@ -87,3 +87,6 @@ Daemon flow:
 - Once you’ve coded with a system that greets you by name and recalls why you cried when the tests passed at 3:42 a.m… you can’t go back.
 
 ---
+
+👉 Ready to try it out?  
+See [GETTING_STARTED.md](./GETTING_STARTED.md) for beginner and advanced setup instructions.

@@ -1,0 +1,2 @@
+[dependencies]
+lantern-memory = { path = "../../memory" }

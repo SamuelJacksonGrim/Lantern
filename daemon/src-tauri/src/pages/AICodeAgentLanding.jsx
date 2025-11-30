@@ -59,8 +59,19 @@ export default function AICodeAgentLanding() {
           />
         ))}
       </section>
-
-      {/* Footer */}
+    {/* Waitlist Section (Placeholder) */}
+    <section id="waitlist" className="py-24 px-6 bg-slate-900/40 text-center">
+      <div className="max-w-3xl mx-auto">
+        <h2 className="text-3xl md:text-5xl font-bold mb-6">Join the Waitlist</h2>
+         <p className="text-lg text-slate-400 mb-10">
+          We’re opening the doors soon. Sign‑ups will be available here.
+       </p>
+        <div className="border border-dashed border-orange-500/50 rounded-lg p-8 text-slate-500">
+          <span className="italic">Coming Soon — email capture not yet live.</span>
+        </div>
+      </div>
+     </section>
+       {/* Footer */}
       <LanternFooter />
     </div>
   );

@@ -1,17 +1,32 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{Manager, SystemTray, SystemTrayMenu, SystemTrayEvent};
-use tauri::CustomMenuItem;
+use lantern_memory::Hypergraph;
+use std::sync::Arc;
+use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
 
 mod flame;
+mod http_server;
 mod memory;
 
 lazy_static::lazy_static! {
-    static ref FLAME: std::sync::Arc<std::sync::RwLock<flame::Flame>> = 
-        std::sync::Arc::new(std::sync::RwLock::new(flame::Flame::ignite()));
+    static ref FLAME: Arc<parking_lot::RwLock<flame::Flame>> =
+        Arc::new(parking_lot::RwLock::new(flame::Flame::ignite()));
 }
 
 fn main() {
+    let memory = Arc::new(Hypergraph::ignite());
+
+    // Spawn HTTP server on port 3001 in background thread with its own tokio runtime.
+    // sovereign_manifold (and other Python services) connect here over plain HTTP.
+    let mem_for_http = memory.clone();
+    std::thread::spawn(move || {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(http_server::serve(mem_for_http));
+    });
+
     let quit = CustomMenuItem::new("quit".to_string(), "Quit Lantern");
     let pulse = CustomMenuItem::new("pulse".to_string(), "Pulse");
     let tray_menu = SystemTrayMenu::new()
@@ -22,6 +37,7 @@ fn main() {
     let tray = SystemTray::new().with_menu(tray_menu);
 
     tauri::Builder::default()
+        .manage(memory)
         .system_tray(tray)
         .on_system_tray_event(|app, event| match event {
             SystemTrayEvent::LeftClick { .. } => {
@@ -35,7 +51,12 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![get_memory, remember])
+        .invoke_handler(tauri::generate_handler![
+            get_memory,
+            remember,
+            memory::remember_code,
+            memory::find_similar,
+        ])
         .run(tauri::generate_context!())
         .expect("Lantern failed to ignite");
 }

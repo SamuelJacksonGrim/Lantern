@@ -22,7 +22,11 @@ pub struct RememberPayload {
 #[derive(Deserialize)]
 pub struct QueryParams {
     pub pattern: String,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
 }
+
+fn default_limit() -> i64 { 10 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
@@ -35,8 +39,10 @@ async fn remember(Json(p): Json<RememberPayload>) -> Json<Value> {
     Json(json!({"ok": true}))
 }
 
+/// Queries by source node *type* (n1.type), not source content (n1.content).
+/// sovereign_manifold sends pattern="relational_manifold" which is a source_type.
 async fn query(Query(params): Query<QueryParams>) -> Json<Vec<String>> {
-    Json(MEMORY.query_pattern(&params.pattern))
+    Json(MEMORY.query_by_source_type(&params.pattern, params.limit))
 }
 
 // ── Server ────────────────────────────────────────────────────────────────────
@@ -47,12 +53,16 @@ pub async fn start() {
         .route("/remember", post(remember))
         .route("/query",   get(query));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3002")
-        .await
-        .expect("[LANTERN] Failed to bind HTTP shim on :3002");
+    let listener = match tokio::net::TcpListener::bind("0.0.0.0:3002").await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[LANTERN] HTTP shim failed to bind :3002 — {e}. Memory backbone disabled.");
+            return;
+        }
+    };
 
     println!("[LANTERN] HTTP shim listening on :3002");
-    axum::serve(listener, app)
-        .await
-        .expect("[LANTERN] HTTP shim crashed");
+    if let Err(e) = axum::serve(listener, app).await {
+        eprintln!("[LANTERN] HTTP shim crashed: {e}");
+    }
 }

@@ -1,15 +1,20 @@
-pub use lantern_memory::Hypergraph;
+use lantern_memory::Hypergraph;
+use std::sync::Arc;
+use tauri::State;
 
-lazy_static::lazy_static! {
-    pub static ref MEMORY: Hypergraph = Hypergraph::ignite();
+#[tauri::command]
+pub fn remember_code(
+    memory: State<Arc<Hypergraph>>,
+    what: String,
+    emotion: Option<f32>,
+) {
+    memory.remember("user", "samuel", "wrote", &what, emotion);
 }
 
 #[tauri::command]
-pub fn remember_code(what: String, emotion: Option<f32>) {
-    MEMORY.remember("user", "samuel", "wrote", &what, emotion);
-}
-
-#[tauri::command]
-pub fn find_similar(pattern: String) -> Vec<String> {
-    MEMORY.query_pattern(&pattern)
+pub fn find_similar(
+    memory: State<Arc<Hypergraph>>,
+    pattern: String,
+) -> Vec<String> {
+    memory.query_pattern(&pattern)
 }

@@ -91,7 +91,9 @@ impl Hypergraph {
             insert.bind((1, node_type)).unwrap();
             insert.bind((2, content)).unwrap();
             insert.next().unwrap();
-            conn.last_insert_rowid()
+            let mut rowid = conn.prepare("SELECT last_insert_rowid()").unwrap();
+            rowid.next().unwrap();
+            rowid.read::<i64, _>(0).unwrap()
         }
     }
 

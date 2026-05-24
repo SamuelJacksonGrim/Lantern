@@ -5,6 +5,7 @@ use tauri::CustomMenuItem;
 
 mod flame;
 mod memory;
+mod http_server;
 
 lazy_static::lazy_static! {
     static ref FLAME: std::sync::Arc<std::sync::RwLock<flame::Flame>> = 
@@ -12,6 +13,16 @@ lazy_static::lazy_static! {
 }
 
 fn main() {
+    // Spawn HTTP shim in its own thread with its own Tokio runtime.
+    // Must NOT use Tauri's runtime or block the main thread.
+    std::thread::spawn(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("[LANTERN] Failed to build Tokio runtime for HTTP shim")
+            .block_on(http_server::start());
+    });
+
     let quit = CustomMenuItem::new("quit".to_string(), "Quit Lantern");
     let pulse = CustomMenuItem::new("pulse".to_string(), "Pulse");
     let tray_menu = SystemTrayMenu::new()

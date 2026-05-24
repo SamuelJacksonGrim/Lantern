@@ -51,6 +51,10 @@ impl Hypergraph {
     }
 
     pub fn remember(&self, source_type: &str, source_content: &str, relation: &str, target_content: &str, emotion: Option<f32>) {
+        // BUG-3 (pre-existing, flagged not fixed): acquires read() lock but executes
+        // write SQL. Works because SQLite serializes writes internally, but the RwLock
+        // semantics are wrong — concurrent remember() calls are not truly serialized
+        // from Rust's perspective. Fix: use write() lock here.
         let conn = self.conn.read();
 
         let source_id = self.ensure_node(&conn, source_type, source_content);
@@ -87,7 +91,9 @@ impl Hypergraph {
             insert.bind((1, node_type)).unwrap();
             insert.bind((2, content)).unwrap();
             insert.next().unwrap();
-            conn.last_insert_rowid()
+            let mut rowid = conn.prepare("SELECT last_insert_rowid()").unwrap();
+            rowid.next().unwrap();
+            rowid.read::<i64, _>(0).unwrap()
         }
     }
 
@@ -107,6 +113,32 @@ impl Hypergraph {
         let mut stmt = conn.prepare(&sql).unwrap();
         while let Ok(State::Row) = stmt.next() {
             results.push(stmt.read::<String, _>("content").unwrap());
+        }
+        results
+    }
+
+    /// Query target content by source node *type* (not content).
+    /// Used by the HTTP /query endpoint: sovereign_manifold sends
+    /// `pattern="relational_manifold"` which is a source_type, not source content.
+    /// `query_pattern()` matches n1.content — wrong column for this use case.
+    pub fn query_by_source_type(&self, source_type: &str, limit: i64) -> Vec<String> {
+        let conn = self.conn.read();
+        let mut results = Vec::new();
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT n2.content FROM edges e
+             JOIN nodes n1 ON e.source = n1.id
+             JOIN nodes n2 ON e.target = n2.id
+             WHERE n1.type = ?
+             ORDER BY e.weight DESC LIMIT ?"
+        ) else {
+            return results;
+        };
+        if stmt.bind((1, source_type)).is_ok() && stmt.bind((2, limit)).is_ok() {
+            while let Ok(State::Row) = stmt.next() {
+                if let Ok(content) = stmt.read::<String, _>("content") {
+                    results.push(content);
+                }
+            }
         }
         results
     }

@@ -102,17 +102,19 @@ The vision above is where Lantern is going. Here is what exists in the code toda
 |---------|--------|-------|
 | Hypergraph SQLite store | Implemented | In-memory (`:memory:`); file-backed path stubbed |
 | Edge weight accumulation | Implemented | +0.3 per call, UNIQUE(source, target, label) constraint |
-| `query_pattern()` | Implemented | Weight-ordered, LIKE match, LIMIT 10 |
+| `query_pattern()` | Implemented | Weight-ordered, content LIKE match, LIMIT 10 |
+| `query_by_source_type()` | Implemented (T2.1) | Weight-ordered, exact `n1.type =`, configurable limit |
 | Tauri IPC commands | Implemented | `get_memory`, `remember`, `remember_code`, `find_similar` |
 | System tray | Implemented | Flame pulse + Quit |
 | Emotion edge annotation | Partial | Schema exists, value stored, not yet used in retrieval |
-| HTTP REST on :3001 | **Not implemented** | Required for sovereign_manifold integration |
+| HTTP shim on :3002 | Implemented (T2.1) | `/health`, `/remember`, `/query`; shares `Arc<Hypergraph>` with Tauri |
 | File-backed SQLite | **Not implemented** | Memory is lost on daemon restart |
+| `tauri build` / `tauri dev` | **Broken** | `tauri.conf.json` missing the `build` section (Bug 4) |
 | Keystroke hooks | Not implemented | Vision feature |
 | 70B inference / LoRA | Not implemented | Vision feature |
 | Encrypted P2P sync | Not implemented | Vision feature |
 
-The most critical missing piece for the Resonance Family stack is the **HTTP shim** on port 3001. Without it, `sovereign_manifold`'s `_lantern_reachable` stays `False` and all Lantern calls silently no-op — relational state is never written to the hypergraph and the memory backbone is inert.
+The HTTP shim on `:3002` is the bridge that makes `sovereign_manifold`'s `_lantern_reachable` flip to `True` — relational state writes from the cognitive stack now land in the hypergraph instead of silently no-op'ing. Port `:3002` (not `:3001`) avoids a conflict with the UMS in `resonance-haunt-starter`.
 
 ---
 
@@ -123,15 +125,17 @@ lantern/
 ├── daemon/
 │   └── src-tauri/              Tauri system-tray daemon (Rust)
 │       ├── src/
-│       │   ├── main.rs         Entry point, system tray, Tauri IPC command registration
+│       │   ├── main.rs         Entry point: system tray, Arc<Hypergraph>, HTTP thread, Tauri IPC
 │       │   ├── flame.rs        Flame struct: session memory + greeting
-│       │   └── memory.rs       Tauri command wrappers for the Hypergraph crate
+│       │   ├── memory.rs       Tauri command wrappers (take State<Arc<Hypergraph>>)
+│       │   └── http_server.rs  Axum HTTP shim on :3002 (T2.1)
 │       ├── Cargo.toml
+│       ├── Cargo.lock          Committed — binary crate, reproducible builds
 │       └── tauri.conf.json
 └── memory/
     └── memory/                 `lantern_memory` crate (library)
         └── src/
-            └── lib.rs          Hypergraph: SQLite-backed weighted edge store
+            └── lib.rs          Hypergraph: SQLite store, query_pattern, query_by_source_type
 ```
 
 ---
@@ -168,21 +172,32 @@ CREATE TABLE edges (
 
 Key behaviors:
 - `remember(source_type, source_content, relation, target_content, emotion)` — upserts both nodes, then upserts the edge with `weight += 0.3` on each call
-- `query_pattern(pattern)` — joins through edges where `source.content LIKE '%pattern%'`, returns `target.content` ordered by weight DESC, LIMIT 10
+- `query_pattern(pattern)` — joins through edges where `source.content LIKE '%pattern%'`, returns `target.content` ordered by weight DESC, LIMIT 10. Wired to the `find_similar` Tauri command.
+- `query_by_source_type(source_type, limit)` — parameterized exact match on `source.type`, returns `target.content` ordered by weight DESC. Wired to the HTTP `/query` endpoint, because `sovereign_manifold` queries by `source_type` (e.g. `"relational_manifold"`), not by content fragment.
 - Edge weight accumulation encodes frequency of association — the more often two things are connected, the stronger the edge grows
 
 ### Flame Daemon (`daemon/src-tauri/`)
 
-Tauri system-tray application. **Not a network service** — accessed via Tauri IPC, not HTTP.
+Tauri system-tray application that also exposes an Axum HTTP shim on `:3002`. Both the Tauri IPC commands and the HTTP routes hold an `Arc<Hypergraph>` registered via `tauri::manage(...)`, so a write from either interface is immediately visible to the other.
+
+The HTTP shim runs in a dedicated `std::thread` with its own multi-threaded Tokio runtime — isolated from Tauri's event loop. Bind or runtime failures log to stderr without taking down the Tauri app.
 
 **Tauri IPC commands:**
 
 | Command | Behavior |
 |---------|----------|
 | `get_memory` | Returns `"I remember N moments with you."` |
-| `remember` | Pushes string to Flame.memories |
-| `remember_code` | Calls `Hypergraph.remember("user", "samuel", "wrote", what, emotion)` |
-| `find_similar` | Calls `Hypergraph.query_pattern(pattern)`, returns `Vec<String>` |
+| `remember` | Pushes string to `Flame.memories` (NOT the hypergraph — for session greetings) |
+| `remember_code` | `Hypergraph.remember("user", "samuel", "wrote", what, emotion)` |
+| `find_similar` | `Hypergraph.query_pattern(pattern)` → `Vec<String>` |
+
+**HTTP routes on `:3002`:**
+
+| Route | Body / Query | Behavior |
+|-------|--------------|----------|
+| `GET /health` | — | `{"status": "ok"}` |
+| `POST /remember` | `{source_type, source, relation, target, emotion}` | `Hypergraph.remember(...)`, returns 200 |
+| `GET /query?pattern=X&limit=N` | `pattern` (source_type), `limit` (default 10) | `Hypergraph.query_by_source_type(pattern, limit)` → `Vec<String>` |
 
 ---
 
@@ -200,24 +215,32 @@ Tauri system-tray application. **Not a network service** — accessed via Tauri 
 }
 ```
 
-This is sent as `POST http://localhost:3001/remember`. The endpoint does not exist yet. Once the HTTP shim (T2.1) is added, every cycle of relational state gets written to the hypergraph, state persists across restarts, and the memory backbone becomes real.
+This is sent as `POST http://localhost:3002/remember`. On cold start, sovereign_manifold can hydrate from the hypergraph via `GET http://localhost:3002/query?pattern=relational_manifold`, which returns the last N target vectors ordered by edge weight. With the daemon running, `_lantern_reachable` flips to `True` and every relational cycle gets persisted.
+
+For headless testing (no Tauri build), `stack/lantern_mock.py` is a FastAPI mirror of the same three routes on the same port.
 
 ---
 
 ## Building
 
 ```bash
-# Daemon
+# Memory crate (works in any container)
+cd memory
+cargo check
+cargo build
+
+# Daemon — needs Tauri v1 system deps (gdk-3.0, webkit2gtk-4.0)
+# Ubuntu 24.04 only ships webkit2gtk-4.1, so use an older distro,
+# macOS, or Windows for the desktop build.
 cargo install tauri-cli
 cd daemon/src-tauri
-cargo tauri dev     # development
-cargo tauri build   # release
-
-# Memory crate
-cd memory
-cargo build
-cargo test
+cargo build         # Rust-only check, works without Tauri toolchain
+cargo tauri dev     # development — currently broken: tauri.conf.json
+                    # is missing the [build] section (distDir, devPath)
+cargo tauri build   # release — same blocker
 ```
+
+> Note: `tauri build` and `tauri dev` will fail until `tauri.conf.json` gains a `build` section. `cargo build` on the daemon crate alone succeeds and runs the HTTP shim — the missing build config only blocks the desktop frontend bundle.
 
 ---
 

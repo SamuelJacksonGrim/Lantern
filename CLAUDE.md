@@ -1,5 +1,7 @@
 # CLAUDE.md — lantern
 
+> **Cross-repo plan.** Lantern is one layer of the Resonance memory stack — the Phase-2 hypergraph substrate that will back Simple Memory behind an unchanged MCP API. The portable work-order (roadmap + per-repo backlog) lives at https://github.com/SamuelJacksonGrim/resonance-memory-stack — read it before doing memory work here.
+
 ## What Lantern actually is (architecture, not marketing)
 
 Lantern is a memory persistence daemon built in Rust + Tauri. It provides a SQLite-backed hypergraph memory store with temporal edge weighting, accessible via **two interfaces** that share a single `Arc<Hypergraph>` instance:

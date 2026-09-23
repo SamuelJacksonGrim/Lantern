@@ -1,5 +1,12 @@
 # 🔥 Lantern Memory Architecture
 
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue)](LICENSE)
+[![dual-license](https://img.shields.io/badge/dual--license-AGPL--3.0--only%20or%20commercial-blueviolet)](LICENSING.md)
+[![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org)
+[![Tauri](https://img.shields.io/badge/Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
+![status](https://img.shields.io/badge/status-research-success)
+
+
 Lantern isn't another stateless autocomplete or forgetful RAG toy. It's a proprioceptive memory system — always on, always remembering, always yours.
 
 In the Resonance Family stack, Lantern is the **memory backbone**: every concept, relational state, and interaction that the cognitive stack processes gets written to the hypergraph. Shutdown is consolidation, not death.

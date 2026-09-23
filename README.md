@@ -6,6 +6,15 @@
 [![Tauri](https://img.shields.io/badge/Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
 ![status](https://img.shields.io/badge/status-research-success)
 
+## License
+
+This project is dual-licensed under **AGPL-3.0-only** OR a commercial license.
+
+- [LICENSE](LICENSE) — GNU AGPL-3.0-only (the free track)
+- [LICENSING.md](LICENSING.md) — how the two tracks work
+- [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) — the commercial agreement
+- [NOTICE](NOTICE) — copyright, SPDX identifier, and provenance
+
 
 Lantern isn't another stateless autocomplete or forgetful RAG toy. It's a proprioceptive memory system — always on, always remembering, always yours.
 
@@ -257,6 +266,3 @@ See [GETTING_STARTED.md](./GETTING_STARTED.md) for beginner and advanced setup i
 
 ---
 
-## License
-
-Apache 2.0 — Samuel Jackson Grim
